@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NP SCANNER PRO</title>
+<title>NP TERMINAL PRO</title>
 
-<script src="https://unpkg.com/html5-qrcode"></script>
+<script src="https://unpkg.com/@zxing/library@0.20.0"></script>
 
 <style>
 body{
@@ -16,17 +16,11 @@ body{
     text-align:center;
 }
 
-#reader{
-    width:100%;
-    max-width:600px;
-    margin:auto;
-    margin-top:10px;
-}
-
 #ttn{
     font-size:28px;
     color:#00f2fe;
     margin-top:10px;
+    word-break:break-all;
 }
 
 #status{
@@ -35,115 +29,156 @@ body{
     margin-top:5px;
 }
 
+.scanner{
+    width:92%;
+    height:60vh;
+    margin:10px auto;
+    background:#000;
+    border-radius:16px;
+    overflow:hidden;
+    position:relative;
+}
+
+video{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+}
+
+.line{
+    position:absolute;
+    width:100%;
+    height:2px;
+    background:#00f2fe;
+    top:0;
+    animation:scan 2s infinite linear;
+}
+
+@keyframes scan{
+    0%{top:0%;}
+    50%{top:100%;}
+    100%{top:0%;}
+}
+
+.line.active{
+    background:#ff2d2d;
+}
+
 button{
     padding:12px 20px;
     font-size:16px;
-    margin-top:15px;
+    margin-top:10px;
     background:#00f2fe;
     border:none;
     border-radius:10px;
 }
-
 </style>
 </head>
 
 <body>
 
-<h2>NP SCANNER PRO</h2>
+<h2>NP TERMINAL PRO</h2>
 
-<button onclick="startScanner()">📷 Старт камеры</button>
+<button onclick="startScan()">📷 СТАРТ СКАНЕРА</button>
 
-<div id="reader"></div>
+<div class="scanner">
+    <video id="video"></video>
+    <div class="line" id="line"></div>
+</div>
 
 <div id="ttn">---</div>
 <div id="status">ожидание...</div>
 
 <audio id="ok" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
+<audio id="dup" src="https://assets.mixkit.co/active_storage/sfx/555/555-preview.mp3"></audio>
 
 <script>
 
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw6G3Z-JrqLGKu-SIljgynPBgmFDksg6BUXBIW-fMM1By-67tjli7LCzrCZyXvTuhkk/exec";
 
-let html5QrCode;
-let lastCode = "";
+let last = "";
+let cooldown = false;
+let controls = null;
 
-function onScanSuccess(decodedText){
+const status = document.getElementById("status");
+const ttnBox = document.getElementById("ttn");
+const line = document.getElementById("line");
+const ok = document.getElementById("ok");
+const dup = document.getElementById("dup");
 
-    let code = decodedText.trim();
+function startScan(){
 
-    if(!code) return;
+    status.innerText = "📷 запуск камеры...";
 
-// ❗ НЕ режем ничего
-    let cleaned = code.replace(/\s/g,'');
+    const codeReader = new ZXing.BrowserMultiFormatReader();
 
-// антидубль
-    if(cleaned === lastCode) return;
+    const hints = new Map();
+    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+        ZXing.BarcodeFormat.CODE_128,
+        ZXing.BarcodeFormat.CODE_39,
+        ZXing.BarcodeFormat.EAN_13,
+        ZXing.BarcodeFormat.EAN_8,
+        ZXing.BarcodeFormat.QR_CODE
+    ]);
 
-    lastCode = cleaned;
+    const reader = new ZXing.BrowserMultiFormatReader(hints);
 
-    document.getElementById("ttn").innerText = cleaned;
-    document.getElementById("status").innerText = "✔ СКАН";
+    reader.decodeFromVideoDevice(
+        null,
+        "video",
+        (result, err, ctrl) => {
 
-    fetch(SCRIPT_URL,{
-        method:"POST",
-        headers:{"Content-Type":"text/plain"},
-        body:JSON.stringify({ttn:cleaned})
-    });
-}
+            controls = ctrl;
 
-function startScanner(){
+            if(result && !cooldown){
 
-document.getElementById("status").innerText = "📷 запуск камеры...";
+                let text = result.getText().trim();
 
-html5QrCode = new Html5Qrcode("reader");
+                if(!text) return;
 
-// 💥 ВАЖНО: не выбираем deviceId вообще
-html5QrCode.start(
-    { facingMode: { exact: "environment" } },   // 👈 ВОТ ТУТ ФИКС
-    {
+                // 🔥 без ограничений по длине
+                line.classList.add("active");
+                setTimeout(()=>line.classList.remove("active"),150);
 
-        fps: 15,   // 🔥 быстрее
-        qrbox: { width: 350, height: 200 },  // 🔥 шире зона
-        disableFlip: true
+                if(text === last){
+                    status.innerText = "⚠ Дубликат";
+                    dup.play().catch(()=>{});
+                    return;
+                }
 
-        formatsToSupport: [
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.QR_CODE
-        ]
-    },
-    onScanSuccess
-).then(()=>{
+                last = text;
+                cooldown = true;
 
-    document.getElementById("status").innerText =
-    "🎯 наведите на код";
+                ttnBox.innerText = text;
+                status.innerText = "✔ СКАН УСПЕШЕН";
 
-}).catch(err=>{
+                ok.play().catch(()=>{});
 
-    console.log(err);
+                fetch(SCRIPT_URL,{
+                    method:"POST",
+                    headers:{
+                        "Content-Type":"text/plain"
+                    },
+                    body:JSON.stringify({
+                        ttn:text
+                    })
+                })
+                .then(r=>r.text())
+                .then(res=>{
+                    status.innerText = "✔ " + res;
+                });
 
-    // 🔁 fallback (если exact не поддержался iPhone)
-    html5QrCode.start(
-        { facingMode: "environment" },
-        {
-            fps: 12,
-            qrbox: 250
-        },
-        onScanSuccess
-    ).then(()=>{
+                setTimeout(()=>cooldown=false, 1200);
+            }
 
-        document.getElementById("status").innerText =
-        "🎯 наведите на код";
+            if(err){
+                // игнорируем шум
+            }
+        }
+    );
 
-    }).catch(err2=>{
-        console.log(err2);
-        document.getElementById("status").innerText =
-        "❌ камера не запустилась";
-    });
-
-});
-
+    status.innerText = "🎯 НАВЕДИ НА ШТРИХКОД";
 }
 
 </script>
