@@ -3,43 +3,45 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NP SCANNER PRO</title>
 
-<title>NP Scanner</title>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode"></script>
 
 <style>
-
 body{
     margin:0;
-    background:#111;
+    background:#0b0b0b;
     color:#fff;
-    font-family:Arial,sans-serif;
+    font-family:Arial;
     text-align:center;
-}
-
-h1{
-    margin:10px 0;
-    font-size:24px;
 }
 
 #reader{
     width:100%;
-    max-width:700px;
+    max-width:600px;
     margin:auto;
+    margin-top:10px;
 }
 
-#result{
-    margin-top:15px;
-    font-size:24px;
-    font-weight:bold;
-    color:#00ff99;
-    word-break:break-all;
+#ttn{
+    font-size:28px;
+    color:#00f2fe;
+    margin-top:10px;
 }
 
 #status{
-    margin-top:10px;
-    color:#ccc;
+    font-size:14px;
+    color:#aaa;
+    margin-top:5px;
+}
+
+button{
+    padding:12px 20px;
+    font-size:16px;
+    margin-top:15px;
+    background:#00f2fe;
+    border:none;
+    border-radius:10px;
 }
 
 </style>
@@ -47,93 +49,91 @@ h1{
 
 <body>
 
-<h1>NP Scanner</h1>
+<h2>NP SCANNER PRO</h2>
+
+<button onclick="startScanner()">📷 Старт камеры</button>
 
 <div id="reader"></div>
 
-<div id="result">Наведи камеру на штрихкод</div>
-<div id="status">Запуск...</div>
+<div id="ttn">---</div>
+<div id="status">ожидание...</div>
 
-<audio id="ok">
-<source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
-</audio>
+<audio id="ok" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
 
 <script>
 
-const SCRIPT_URL =
-"https://script.google.com/macros/s/AKfycbw6G3Z-JrqLGKu-SIljgynPBgmFDksg6BUXBIW-fMM1By-67tjli7LCzrCZyXvTuhkk/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw6G3Z-JrqLGKu-SIljgynPBgmFDksg6BUXBIW-fMM1By-67tjli7LCzrCZyXvTuhkk/exec";
 
+let html5QrCode;
 let lastCode = "";
 
-function onScanSuccess(decodedText) {
+function onScanSuccess(decodedText){
 
     let code = decodedText.trim();
 
     if(!code) return;
 
-    // НЕ режем длину вообще
-    let digits = code.replace(/\s/g,'');
+    // антидубль
+    if(code === lastCode) return;
 
-    // антидубль только по точному совпадению
-    if(digits === lastCode) return;
+    lastCode = code;
 
-    lastCode = digits;
-
-    document.getElementById("result").innerText = digits;
+    document.getElementById("ttn").innerText = code;
     document.getElementById("status").innerText = "✔ СКАН";
-
-    fetch(SCRIPT_URL,{
-        method:"POST",
-        headers:{"Content-Type":"text/plain"},
-        body:JSON.stringify({ttn:digits})
-    });
-}
-
-    lastCode = digits;
-
-    document.getElementById("result").innerText = digits;
-    document.getElementById("status").innerText =
-    "✔ Отправка в таблицу";
 
     document.getElementById("ok").play().catch(()=>{});
 
     fetch(SCRIPT_URL,{
         method:"POST",
-        headers:{
-            "Content-Type":"text/plain"
-        },
-        body:JSON.stringify({
-            ttn:digits
-        })
-    })
-    .then(r=>r.text())
-    .then(res=>{
-        document.getElementById("status").innerText =
-        "✔ " + res;
-    })
-    .catch(()=>{
-        document.getElementById("status").innerText =
-        "❌ Ошибка отправки";
+        headers:{"Content-Type":"text/plain"},
+        body:JSON.stringify({ttn:code})
     });
+
 }
 
-const html5QrCode = new Html5Qrcode("reader");
+function startScanner(){
 
-html5QrCode.start(
-    { facingMode: "environment" },
-    {
-        fps: 10,
-        qrbox: 250
-    },
-    onScanSuccess
-).then(()=>{
-    document.getElementById("status").innerText =
-    "🎯 Наведи на штрихкод";
-}).catch(err=>{
-    document.getElementById("status").innerText =
-    "❌ Ошибка камеры";
-    console.log(err);
-});
+    document.getElementById("status").innerText = "📷 запуск камеры...";
+
+    html5QrCode = new Html5Qrcode("reader");
+
+    Html5Qrcode.getCameras().then(devices => {
+
+        if(devices.length === 0){
+            document.getElementById("status").innerText = "❌ камера не найдена";
+            return;
+        }
+
+        let cameraId = devices[0].id;
+
+        html5QrCode.start(
+            cameraId,
+            {
+                fps: 12,
+                qrbox: 250,
+                formatsToSupport: [
+                    Html5QrcodeSupportedFormats.CODE_128,
+                    Html5QrcodeSupportedFormats.CODE_39,
+                    Html5QrcodeSupportedFormats.EAN_13,
+                    Html5QrcodeSupportedFormats.EAN_8,
+                    Html5QrcodeSupportedFormats.QR_CODE
+                ]
+            },
+            onScanSuccess
+        ).then(()=>{
+
+            document.getElementById("status").innerText =
+            "🎯 наведите на код";
+
+        }).catch(err=>{
+            console.log(err);
+            document.getElementById("status").innerText =
+            "❌ ошибка камеры";
+        });
+
+    });
+
+}
 
 </script>
 
