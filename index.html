@@ -3,9 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NP SCANNER TERMINAL</title>
-
-<link rel="manifest" href="manifest.json">
+<title>NP SCANNER ULTRA</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
 
@@ -20,76 +18,77 @@ body{
 
 /* TTN */
 #ttn{
-    font-size:30px;
-    font-weight:800;
+    font-size:32px;
+    font-weight:900;
     color:#00f2fe;
     padding:14px;
-    word-break:break-all;
     min-height:40px;
+    word-break:break-all;
 }
 
 /* STATUS */
 #status{
     font-size:15px;
     color:#aaa;
-    min-height:22px;
+    min-height:20px;
 }
 
 /* CAMERA */
 .scanner{
     position:relative;
     width:92%;
-    height:55vh;
+    height:56vh;
     margin:10px auto;
     border-radius:18px;
     overflow:hidden;
     background:#000;
-    box-shadow:0 0 30px rgba(0,242,254,0.15);
+    box-shadow:0 0 35px rgba(0,242,254,0.12);
 }
 
-/* zoom камеры */
+/* zoom */
 .scanner video{
     width:100%;
     height:100%;
     object-fit:cover;
-    transform:scale(1.25);
+    transform:scale(1.3);
 }
 
-/* glow зона (без дерганья) */
-.glow{
+/* ROI (центр скан) */
+.roi{
     position:absolute;
     top:50%;
     left:50%;
     transform:translate(-50%,-50%);
-    width:85%;
+    width:82%;
     height:110px;
-    border-radius:14px;
     border:2px solid #00f2fe;
-    box-shadow:0 0 25px rgba(0,242,254,0.25);
-    transition:0.2s;
+    border-radius:14px;
+    box-shadow:0 0 30px rgba(0,242,254,0.25);
+    transition:0.15s;
 }
 
-/* красный захват */
-.glow.active{
+/* красный flash */
+.roi.active{
     border-color:#ff3b3b;
-    box-shadow:0 0 30px rgba(255,59,59,0.35);
+    box-shadow:0 0 35px rgba(255,59,59,0.35);
 }
 
-/* кнопка */
-button{
-    padding:14px 26px;
-    margin:12px;
+/* scan glow animation (очень мягкая) */
+.glow{
+    position:absolute;
+    width:100%;
+    height:2px;
     background:#00f2fe;
-    border:none;
-    border-radius:12px;
-    font-weight:800;
-    color:#000;
-    box-shadow:0 8px 20px rgba(0,242,254,0.3);
+    top:0;
+    animation:scan 2s infinite linear;
+    opacity:0.6;
 }
 
-.ok{color:#00ff99;}
-.err{color:#ff4d4d;}
-.info{color:#aaa;}
+@keyframes scan{
+    0%{top:0%;}
+    50%{top:100%;}
+    100%{top:0%;}
+}
 
 audio{display:none;}
 </style>
@@ -98,14 +97,13 @@ audio{display:none;}
 <body>
 
 <div id="ttn">---</div>
-<div id="status" class="info">Нажмите СКАН</div>
+<div id="status">инициализация...</div>
 
 <div class="scanner">
     <div id="camera"></div>
-    <div class="glow" id="glow"></div>
+    <div class="roi" id="roi"></div>
+    <div class="glow"></div>
 </div>
-
-<button onclick="startScan()">SCAN</button>
 
 <audio id="okSound">
 <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3">
@@ -119,30 +117,26 @@ audio{display:none;}
 
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw6G3Z-JrqLGKu-SIljgynPBgmFDksg6BUXBIW-fMM1By-67tjli7LCzrCZyXvTuhkk/exec";
 
-let started = false;
-let lastTTN = null;
+let lastTTN = "";
 let buffer = {};
 let cooldown = false;
 
 const ttnBox = document.getElementById("ttn");
 const statusBox = document.getElementById("status");
-const glow = document.getElementById("glow");
+const roi = document.getElementById("roi");
 
 const okSound = document.getElementById("okSound");
 const errSound = document.getElementById("errSound");
 
-function setStatus(text,type){
-    statusBox.innerText = text;
-    statusBox.className = type;
-}
+// 🚀 AUTO START
+window.onload = () => {
+    startScanner();
+};
 
-// 🚀 START
-function startScan(){
+// 🔥 старт камеры сразу
+function startScanner(){
 
-if(started) return;
-started = true;
-
-setStatus("📷 запуск камеры...", "info");
+setStatus("📷 запуск камеры...");
 
 Quagga.init({
     inputStream:{
@@ -156,25 +150,24 @@ Quagga.init({
         readers:["code_128_reader"]
     },
     locate:true,
-    frequency: 12
+    frequency: 14
 }, function(err){
 
     if(err){
-        setStatus("❌ ошибка камеры","err");
+        setStatus("❌ ошибка камеры");
         return;
     }
 
     Quagga.start();
-    setStatus("🎯 наведите на центр","info");
+    setStatus("🎯 скан активен");
 });
 
-Quagga.onDetected(onScan);
+Quagga.onDetected(handle);
 
 }
 
-
-// 🎯 SCAN LOGIC
-function onScan(result){
+// 🎯 MAIN SCAN
+function handle(result){
 
 if(cooldown) return;
 
@@ -183,19 +176,19 @@ if(!code) return;
 
 let digits = code.replace(/\D/g,'');
 
-// фильтр НП
+// 🔥 НП фильтр
 if(!digits.startsWith("20")) return;
 if(digits.length < 14 || digits.length > 20) return;
 
-// стабилизация
+// 🔁 стабильность
 buffer[digits] = (buffer[digits] || 0) + 1;
 if(buffer[digits] < 3) return;
 
 buffer = {};
 
-// антидубль
+// 🚫 дубль
 if(digits === lastTTN){
-    setStatus("⚠ дубль","err");
+    setStatus("⚠ дубль");
     errSound.play().catch(()=>{});
     return;
 }
@@ -205,36 +198,33 @@ cooldown = true;
 
 // UI
 ttnBox.innerText = digits;
-
-// 🔴 красный захват
-glow.classList.add("active");
-setTimeout(()=>{
-    glow.classList.remove("active");
-},400);
-
-// статус записано
-setStatus("✔ записано","ok");
+setStatus("✔ записано");
 
 okSound.play().catch(()=>{});
 if(navigator.vibrate) navigator.vibrate(150);
 
-// 📤 запись в Google Sheets
+// 🔴 flash ROI
+roi.classList.add("active");
+setTimeout(()=>roi.classList.remove("active"),300);
+
+// 📤 send
 fetch(SCRIPT_URL,{
     method:"POST",
     headers:{"Content-Type":"text/plain"},
     body: JSON.stringify({ttn:digits})
 });
 
-// stop camera
-Quagga.stop();
-started = false;
-
-// reset
+// ⏱ cooldown
 setTimeout(()=>{
     cooldown = false;
-    setStatus("Нажмите СКАН","info");
-},2500);
+    setStatus("скан активен");
+},1200);
 
+}
+
+// status helper
+function setStatus(t){
+    statusBox.innerText = t;
 }
 
 </script>
