@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NP SCANNER PRO MAX</title>
+<title>NP SCANNER TERMINAL</title>
 
 <link rel="manifest" href="manifest.json">
 
@@ -44,44 +44,38 @@ body{
     border-radius:18px;
     overflow:hidden;
     background:#000;
-    box-shadow:0 0 25px rgba(0,242,254,0.2);
+    box-shadow:0 0 30px rgba(0,242,254,0.15);
 }
 
+/* zoom камеры */
 .scanner video{
     width:100%;
     height:100%;
     object-fit:cover;
-    transform:scale(1.25); /* 🔥 ZOOM */
+    transform:scale(1.25);
 }
 
-/* CENTER ROI */
-.roi{
+/* glow зона (без дерганья) */
+.glow{
     position:absolute;
     top:50%;
     left:50%;
     transform:translate(-50%,-50%);
     width:85%;
-    height:100px;
-    border:2px solid #00f2fe;
+    height:110px;
     border-radius:14px;
+    border:2px solid #00f2fe;
+    box-shadow:0 0 25px rgba(0,242,254,0.25);
+    transition:0.2s;
 }
 
-/* SCAN LINE */
-.line{
-    position:absolute;
-    width:100%;
-    height:2px;
-    background:#00f2fe;
-    top:0;
-    animation:scan 2s infinite linear;
+/* красный захват */
+.glow.active{
+    border-color:#ff3b3b;
+    box-shadow:0 0 30px rgba(255,59,59,0.35);
 }
 
-@keyframes scan{
-    0%{top:0%;}
-    50%{top:100%;}
-    100%{top:0%;}
-}
-
+/* кнопка */
 button{
     padding:14px 26px;
     margin:12px;
@@ -90,6 +84,7 @@ button{
     border-radius:12px;
     font-weight:800;
     color:#000;
+    box-shadow:0 8px 20px rgba(0,242,254,0.3);
 }
 
 .ok{color:#00ff99;}
@@ -106,9 +101,8 @@ audio{display:none;}
 <div id="status" class="info">Нажмите СКАН</div>
 
 <div class="scanner">
-    <div class="line"></div>
-    <div class="roi"></div>
     <div id="camera"></div>
+    <div class="glow" id="glow"></div>
 </div>
 
 <button onclick="startScan()">SCAN</button>
@@ -132,6 +126,7 @@ let cooldown = false;
 
 const ttnBox = document.getElementById("ttn");
 const statusBox = document.getElementById("status");
+const glow = document.getElementById("glow");
 
 const okSound = document.getElementById("okSound");
 const errSound = document.getElementById("errSound");
@@ -178,7 +173,7 @@ Quagga.onDetected(onScan);
 }
 
 
-// 🎯 SCAN
+// 🎯 SCAN LOGIC
 function onScan(result){
 
 if(cooldown) return;
@@ -192,13 +187,13 @@ let digits = code.replace(/\D/g,'');
 if(!digits.startsWith("20")) return;
 if(digits.length < 14 || digits.length > 20) return;
 
-// стабильность
+// стабилизация
 buffer[digits] = (buffer[digits] || 0) + 1;
 if(buffer[digits] < 3) return;
 
 buffer = {};
 
-// дубль
+// антидубль
 if(digits === lastTTN){
     setStatus("⚠ дубль","err");
     errSound.play().catch(()=>{});
@@ -210,21 +205,31 @@ cooldown = true;
 
 // UI
 ttnBox.innerText = digits;
+
+// 🔴 красный захват
+glow.classList.add("active");
+setTimeout(()=>{
+    glow.classList.remove("active");
+},400);
+
+// статус записано
 setStatus("✔ записано","ok");
 
 okSound.play().catch(()=>{});
 if(navigator.vibrate) navigator.vibrate(150);
 
-// отправка
+// 📤 запись в Google Sheets
 fetch(SCRIPT_URL,{
     method:"POST",
     headers:{"Content-Type":"text/plain"},
     body: JSON.stringify({ttn:digits})
 });
 
+// stop camera
 Quagga.stop();
 started = false;
 
+// reset
 setTimeout(()=>{
     cooldown = false;
     setStatus("Нажмите СКАН","info");
