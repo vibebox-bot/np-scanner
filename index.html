@@ -65,17 +65,29 @@ const SCRIPT_URL =
 
 let lastCode = "";
 
-function onScanSuccess(decodedText){
+function onScanSuccess(decodedText) {
 
-    let digits = decodedText.replace(/\D/g,'');
+    let code = decodedText.trim();
 
-    if(!digits) return;
+    if(!code) return;
 
-    if(digits === lastCode){
-        document.getElementById("status").innerText =
-        "⚠ Дубликат";
-        return;
-    }
+    // НЕ режем длину вообще
+    let digits = code.replace(/\s/g,'');
+
+    // антидубль только по точному совпадению
+    if(digits === lastCode) return;
+
+    lastCode = digits;
+
+    document.getElementById("result").innerText = digits;
+    document.getElementById("status").innerText = "✔ СКАН";
+
+    fetch(SCRIPT_URL,{
+        method:"POST",
+        headers:{"Content-Type":"text/plain"},
+        body:JSON.stringify({ttn:digits})
+    });
+}
 
     lastCode = digits;
 
