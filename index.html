@@ -3,46 +3,51 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NP SCANNER PWA</title>
-
-<link rel="manifest" href="manifest.json">
+<title>NP SCANNER FINAL</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
 
 <style>
 body{
     margin:0;
-    background:#111;
+    background:#0b0b0b;
     color:#fff;
     font-family:Arial;
     text-align:center;
 }
 
-/* НЕ ЧЁРНЫЙ ЭКРАН — СТИЛЬ ПРЕВЬЮ */
-.scanner{
-    position:relative;
-    width:100%;
-    height:60vh;
-    overflow:hidden;
-    background:#222;
+/* TTN сверху */
+#ttn{
+    font-size:28px;
+    font-weight:bold;
+    color:#00f2fe;
+    padding:12px;
+    min-height:40px;
+    word-break:break-all;
 }
 
-video{
+/* статус */
+#status{
+    font-size:14px;
+    color:#aaa;
+    min-height:20px;
+}
+
+/* камера */
+.scanner{
+    position:relative;
+    width:92%;
+    height:55vh;
+    margin:10px auto;
+    border-radius:16px;
+    overflow:hidden;
+    background:#000;
+}
+
+.scanner video{
     width:100%;
     height:100%;
     object-fit:cover;
-}
-
-/* зелёная зона фокуса */
-.focus{
-    position:absolute;
-    top:50%;
-    left:50%;
-    transform:translate(-50%,-50%);
-    width:90%;
-    height:90px;
-    border:2px solid #00f2fe;
-    border-radius:12px;
 }
 
 /* линия */
@@ -61,71 +66,84 @@ video{
     100%{top:0%;}
 }
 
-#ttn{
-    font-size:22px;
-    margin-top:10px;
-    color:#00f2fe;
-    word-break:break-all;
+/* фокус */
+.focus{
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    width:90%;
+    height:90px;
+    border:2px solid #00f2fe;
+    border-radius:12px;
 }
 
-#status{
-    font-size:14px;
-    color:#aaa;
-}
-
+/* кнопка */
 button{
-    padding:12px 20px;
+    padding:14px 22px;
     margin:10px;
     background:#00f2fe;
     border:none;
     border-radius:10px;
-    color:#000;
     font-weight:bold;
 }
+
+/* скрытые аудио */
+audio{display:none;}
 </style>
 </head>
 
 <body>
 
-<h3>NP SCANNER PWA</h3>
+<div id="ttn">---</div>
+<div id="status">Нажмите СКАН</div>
 
 <div class="scanner">
     <div class="line"></div>
     <div class="focus"></div>
-    <div id="video"></div>
+    <div id="camera"></div>
 </div>
 
-<div id="ttn">---</div>
-<div id="status">готов</div>
+<button onclick="startScan()">SCAN</button>
 
-<button onclick="startScan()">СТАРТ</button>
+<audio id="okSound">
+<source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3">
+</audio>
+
+<audio id="errSound">
+<source src="https://assets.mixkit.co/active_storage/sfx/2947/2947-preview.mp3">
+</audio>
 
 <script>
 
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw6G3Z-JrqLGKu-SIljgynPBgmFDksg6BUXBIW-fMM1By-67tjli7LCzrCZyXvTuhkk/exec";
 
-let last = "";
-let buffer = {};
 let started = false;
+let lastTTN = null;
+let buffer = {};
+let cooldown = false;
 
-const status = document.getElementById("status");
 const ttnBox = document.getElementById("ttn");
+const statusBox = document.getElementById("status");
 
+const okSound = document.getElementById("okSound");
+const errSound = document.getElementById("errSound");
+
+
+// 🚀 СТАРТ
 function startScan(){
 
 if(started) return;
 started = true;
 
-status.innerText = "📷 запуск...";
+statusBox.innerText = "📷 запуск камеры...";
 
 Quagga.init({
     inputStream:{
         type:"LiveStream",
-        target: document.querySelector('#video'),
+        target: document.querySelector('#camera'),
         constraints:{
-            facingMode:"environment",
-            width: 1280,
-            height: 720
+            facingMode:"environment"
         }
     },
     decoder:{
@@ -136,62 +154,75 @@ Quagga.init({
 }, function(err){
 
     if(err){
-        status.innerText = "Ошибка камеры";
+        statusBox.innerText = "❌ ошибка камеры";
         return;
     }
 
+    statusBox.innerText = "🎯 наведите на код";
     Quagga.start();
-    status.innerText = "наведите на код";
 });
 
 Quagga.onDetected(onScan);
 
 }
 
+
+// 🎯 СКАН
 function onScan(result){
+
+if(cooldown) return;
 
 let code = result.codeResult.code;
 if(!code) return;
 
-// 🔥 УБРАЛИ ОГРАНИЧЕНИЕ ДЛИНЫ (ВАЖНО)
 let digits = code.replace(/\D/g,'');
 
-// антишум
-if(!digits) return;
+// ❌ фильтр НП
+if(!digits.startsWith("20")) return;
+if(digits.length < 14 || digits.length > 20) return;
 
-// buffer для стабильности
+// 🔁 стабильность (анти шум)
 buffer[digits] = (buffer[digits] || 0) + 1;
+if(buffer[digits] < 3) return;
 
-if(buffer[digits] < 2) return;
-
-// reset buffer
 buffer = {};
 
-// антидубль
-if(digits === last) return;
+// 🚫 антидубль
+if(digits === lastTTN){
+    statusBox.innerText = "⚠ дубль";
+    errSound.play().catch(()=>{});
+    return;
+}
 
-last = digits;
+lastTTN = digits;
+cooldown = true;
 
+// 📦 UI
 ttnBox.innerText = digits;
-status.innerText = "✔ СКАН";
+statusBox.innerText = "✔ СКАНЕРОВАНО";
 
+okSound.play().catch(()=>{});
+if(navigator.vibrate) navigator.vibrate(150);
+
+// 📤 отправка в Google Sheets
 fetch(SCRIPT_URL,{
     method:"POST",
+    headers:{
+        "Content-Type":"text/plain"
+    },
     body: JSON.stringify({ttn:digits})
 });
 
+// ⛔ стоп камеры после скана
 Quagga.stop();
 started = false;
 
+// 🔁 перезапуск через паузу
 setTimeout(()=>{
-    status.innerText = "готов";
-},2000);
+    cooldown = false;
+    statusBox.innerText = "Нажмите СКАН";
+},2500);
 
-}
-
-// PWA service worker
-if('serviceWorker' in navigator){
-    navigator.serviceWorker.register('sw.js');
 }
 
 </script>
