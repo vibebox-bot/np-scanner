@@ -3,9 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NP TERMINAL PRO</title>
-
-<script src="https://unpkg.com/@zxing/library@0.20.0"></script>
+<title>NP BARCODE PRO</title>
 
 <style>
 body{
@@ -38,7 +36,7 @@ video{
 
 button{
     padding:12px 20px;
-    margin:10px;
+    margin-top:10px;
     background:#00f2fe;
     border:none;
     border-radius:10px;
@@ -48,11 +46,11 @@ button{
 
 <body>
 
-<h2>NP TERMINAL PRO</h2>
+<h2>NP BARCODE PRO</h2>
 
 <button onclick="startScan()">📷 СТАРТ</button>
 
-<video id="video"></video>
+<video id="video" autoplay playsinline></video>
 
 <div id="ttn">---</div>
 <div id="status">ожидание...</div>
@@ -64,32 +62,43 @@ button{
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw6G3Z-JrqLGKu-SIljgynPBgmFDksg6BUXBIW-fMM1By-67tjli7LCzrCZyXvTuhkk/exec";
 
 let last = "";
-let scanning = false;
+let stream = null;
 
-const codeReader = new ZXing.BrowserMultiFormatReader();
+async function startScan(){
 
-function startScan(){
+    document.getElementById("status").innerText = "📷 запуск камеры...";
 
-document.getElementById("status").innerText = "📷 запуск камеры...";
+    try{
 
-navigator.mediaDevices.getUserMedia({
-    video: {
-        facingMode: { ideal: "environment" }
+        stream = await navigator.mediaDevices.getUserMedia({
+            video:{
+                facingMode:{ ideal:"environment" }
+            }
+        });
+
+        const video = document.getElementById("video");
+        video.srcObject = stream;
+
+        await video.play();
+
+        document.getElementById("status").innerText =
+        "🎯 наведите на код";
+
+        startDetection(video);
+
+    }catch(e){
+        console.log(e);
+        document.getElementById("status").innerText =
+        "❌ камера недоступна";
     }
-}).then(stream => {
+}
 
-    const video = document.getElementById("video");
-    video.srcObject = stream;
-    video.play();
-
-    scanning = true;
+function startDetection(video){
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
 
-    const tick = () => {
-
-        if(!scanning) return;
+    async function tick(){
 
         if(video.readyState === video.HAVE_ENOUGH_DATA){
 
@@ -98,14 +107,25 @@ navigator.mediaDevices.getUserMedia({
 
             ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
-            const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
+            const barcodeDetector = new BarcodeDetector({
+                formats: [
+                    "code_128",
+                    "code_39",
+                    "ean_13",
+                    "ean_8",
+                    "qr_code",
+                    "data_matrix",
+                    "pdf417"
+                ]
+            });
 
             try{
-                const result = codeReader.decodeBitmap(imageData);
 
-                if(result){
+                const barcodes = await barcodeDetector.detect(canvas);
 
-                    let text = result.getText();
+                if(barcodes.length > 0){
+
+                    let text = barcodes[0].rawValue;
 
                     if(text && text !== last){
 
@@ -123,28 +143,19 @@ navigator.mediaDevices.getUserMedia({
                             },
                             body:JSON.stringify({ttn:text})
                         });
+
                     }
                 }
 
             }catch(e){
-                // игнор — это нормально для frame scanning
+                // тихо игнорим ошибки детектора
             }
         }
 
         requestAnimationFrame(tick);
-    };
+    }
 
     tick();
-
-    document.getElementById("status").innerText =
-    "🎯 НАВЕДИ НА ШТРИХКОД";
-
-}).catch(err=>{
-    document.getElementById("status").innerText =
-    "❌ нет доступа к камере";
-    console.log(err);
-});
-
 }
 
 </script>
