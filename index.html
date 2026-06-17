@@ -93,50 +93,53 @@ function onScanSuccess(decodedText){
 
 function startScanner(){
 
-    document.getElementById("status").innerText = "📷 запуск камеры...";
+document.getElementById("status").innerText = "📷 запуск камеры...";
 
-    html5QrCode = new Html5Qrcode("reader");
+html5QrCode = new Html5Qrcode("reader");
 
-    Html5Qrcode.getCameras().then(devices => {
+// 💥 ВАЖНО: не выбираем deviceId вообще
+html5QrCode.start(
+    { facingMode: { exact: "environment" } },   // 👈 ВОТ ТУТ ФИКС
+    {
+        fps: 12,
+        qrbox: 250,
+        formatsToSupport: [
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.QR_CODE
+        ]
+    },
+    onScanSuccess
+).then(()=>{
 
-        if(devices.length === 0){
-            document.getElementById("status").innerText = "❌ камера не найдена";
-            return;
-        }
+    document.getElementById("status").innerText =
+    "🎯 наведите на код";
 
-        let cameraId = devices.find(d => 
-            d.label.toLowerCase().includes("back") ||
-            d.label.toLowerCase().includes("rear") ||
-            d.label.toLowerCase().includes("environment")
-        )?.id || devices[0].id;
+}).catch(err=>{
 
+    console.log(err);
 
-        html5QrCode.start(
-            cameraId,
-            {
-                fps: 12,
-                qrbox: 250,
-                formatsToSupport: [
-                    Html5QrcodeSupportedFormats.CODE_128,
-                    Html5QrcodeSupportedFormats.CODE_39,
-                    Html5QrcodeSupportedFormats.EAN_13,
-                    Html5QrcodeSupportedFormats.EAN_8,
-                    Html5QrcodeSupportedFormats.QR_CODE
-                ]
-            },
-            onScanSuccess
-        ).then(()=>{
+    // 🔁 fallback (если exact не поддержался iPhone)
+    html5QrCode.start(
+        { facingMode: "environment" },
+        {
+            fps: 12,
+            qrbox: 250
+        },
+        onScanSuccess
+    ).then(()=>{
 
-            document.getElementById("status").innerText =
-            "🎯 наведите на код";
+        document.getElementById("status").innerText =
+        "🎯 наведите на код";
 
-        }).catch(err=>{
-            console.log(err);
-            document.getElementById("status").innerText =
-            "❌ ошибка камеры";
-        });
-
+    }).catch(err2=>{
+        console.log(err2);
+        document.getElementById("status").innerText =
+        "❌ камера не запустилась";
     });
+
+});
 
 }
 
