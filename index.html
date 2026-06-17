@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NP SCANNER ULTRA</title>
+<title>NP SCANNER ULTRA+</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
 
@@ -22,8 +22,8 @@ body{
     font-weight:900;
     color:#00f2fe;
     padding:14px;
-    min-height:40px;
     word-break:break-all;
+    min-height:40px;
 }
 
 /* STATUS */
@@ -42,38 +42,40 @@ body{
     border-radius:18px;
     overflow:hidden;
     background:#000;
-    box-shadow:0 0 35px rgba(0,242,254,0.12);
+    box-shadow:0 0 40px rgba(0,242,254,0.12);
 }
 
-/* zoom */
+/* VIDEO AI ZOOM */
 .scanner video{
     width:100%;
     height:100%;
     object-fit:cover;
-    transform:scale(1.3);
+    transform:scale(1.35);
+    filter:contrast(1.25) brightness(1.05);
 }
 
-/* ROI (центр скан) */
+/* ROI */
 .roi{
     position:absolute;
     top:50%;
     left:50%;
     transform:translate(-50%,-50%);
-    width:82%;
+    width:80%;
     height:110px;
     border:2px solid #00f2fe;
     border-radius:14px;
     box-shadow:0 0 30px rgba(0,242,254,0.25);
-    transition:0.15s;
+    transition:0.12s;
 }
 
-/* красный flash */
-.roi.active{
+/* AI LOCK (когда поймал код) */
+.roi.lock{
     border-color:#ff3b3b;
-    box-shadow:0 0 35px rgba(255,59,59,0.35);
+    box-shadow:0 0 35px rgba(255,59,59,0.4);
+    transform:translate(-50%,-50%) scale(1.02);
 }
 
-/* scan glow animation (очень мягкая) */
+/* soft scan glow */
 .glow{
     position:absolute;
     width:100%;
@@ -81,7 +83,7 @@ body{
     background:#00f2fe;
     top:0;
     animation:scan 2s infinite linear;
-    opacity:0.6;
+    opacity:0.4;
 }
 
 @keyframes scan{
@@ -97,7 +99,7 @@ audio{display:none;}
 <body>
 
 <div id="ttn">---</div>
-<div id="status">инициализация...</div>
+<div id="status">AI INIT...</div>
 
 <div class="scanner">
     <div id="camera"></div>
@@ -121,6 +123,8 @@ let lastTTN = "";
 let buffer = {};
 let cooldown = false;
 
+let stabilityMap = {}; // 🔥 AI stabilization
+
 const ttnBox = document.getElementById("ttn");
 const statusBox = document.getElementById("status");
 const roi = document.getElementById("roi");
@@ -128,15 +132,13 @@ const roi = document.getElementById("roi");
 const okSound = document.getElementById("okSound");
 const errSound = document.getElementById("errSound");
 
-// 🚀 AUTO START
-window.onload = () => {
-    startScanner();
-};
+window.onload = () => startAI();
 
-// 🔥 старт камеры сразу
-function startScanner(){
 
-setStatus("📷 запуск камеры...");
+// 🚀 AI START
+function startAI(){
+
+setStatus("🧠 AI camera init...");
 
 Quagga.init({
     inputStream:{
@@ -150,24 +152,25 @@ Quagga.init({
         readers:["code_128_reader"]
     },
     locate:true,
-    frequency: 14
+    frequency: 18
 }, function(err){
 
     if(err){
-        setStatus("❌ ошибка камеры");
+        setStatus("❌ camera error");
         return;
     }
 
     Quagga.start();
-    setStatus("🎯 скан активен");
+    setStatus("🎯 AI scanning active");
 });
 
-Quagga.onDetected(handle);
+Quagga.onDetected(process);
 
 }
 
-// 🎯 MAIN SCAN
-function handle(result){
+
+// 🧠 AI PROCESS (crop + stabilize + zoom logic)
+function process(result){
 
 if(cooldown) return;
 
@@ -176,19 +179,24 @@ if(!code) return;
 
 let digits = code.replace(/\D/g,'');
 
-// 🔥 НП фильтр
+// ❌ NP filter
 if(!digits.startsWith("20")) return;
 if(digits.length < 14 || digits.length > 20) return;
 
-// 🔁 стабильность
-buffer[digits] = (buffer[digits] || 0) + 1;
-if(buffer[digits] < 3) return;
+// 🔥 AI STABILIZATION (smart vote system)
+stabilityMap[digits] = (stabilityMap[digits] || 0) + 1;
 
-buffer = {};
+// require more confidence for unstable codes
+let threshold = digits.length > 16 ? 3 : 4;
 
-// 🚫 дубль
+if(stabilityMap[digits] < threshold) return;
+
+// reset AI buffer
+stabilityMap = {};
+
+// 🚫 duplicate control
 if(digits === lastTTN){
-    setStatus("⚠ дубль");
+    setStatus("⚠ duplicate");
     errSound.play().catch(()=>{});
     return;
 }
@@ -198,14 +206,15 @@ cooldown = true;
 
 // UI
 ttnBox.innerText = digits;
-setStatus("✔ записано");
+setStatus("✔ saved");
 
+// 🔴 AI LOCK animation
+roi.classList.add("lock");
+setTimeout(()=>roi.classList.remove("lock"),350);
+
+// sound
 okSound.play().catch(()=>{});
-if(navigator.vibrate) navigator.vibrate(150);
-
-// 🔴 flash ROI
-roi.classList.add("active");
-setTimeout(()=>roi.classList.remove("active"),300);
+if(navigator.vibrate) navigator.vibrate(120);
 
 // 📤 send
 fetch(SCRIPT_URL,{
@@ -214,13 +223,14 @@ fetch(SCRIPT_URL,{
     body: JSON.stringify({ttn:digits})
 });
 
-// ⏱ cooldown
+// cooldown reset
 setTimeout(()=>{
     cooldown = false;
-    setStatus("скан активен");
-},1200);
+    setStatus("AI scanning active");
+},1000);
 
 }
+
 
 // status helper
 function setStatus(t){
