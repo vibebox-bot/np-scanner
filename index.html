@@ -3,22 +3,62 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NP SCANNER MAX</title>
+<title>NP SCANNER PWA</title>
+
+<link rel="manifest" href="manifest.json">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
 
 <style>
 body{
     margin:0;
-    background:#0b0b0b;
+    background:#111;
     color:#fff;
     font-family:Arial;
     text-align:center;
 }
 
-video{
+/* НЕ ЧЁРНЫЙ ЭКРАН — СТИЛЬ ПРЕВЬЮ */
+.scanner{
+    position:relative;
     width:100%;
     height:60vh;
+    overflow:hidden;
+    background:#222;
+}
+
+video{
+    width:100%;
+    height:100%;
     object-fit:cover;
-    background:#000;
+}
+
+/* зелёная зона фокуса */
+.focus{
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    width:90%;
+    height:90px;
+    border:2px solid #00f2fe;
+    border-radius:12px;
+}
+
+/* линия */
+.line{
+    position:absolute;
+    width:100%;
+    height:2px;
+    background:#00f2fe;
+    top:0;
+    animation:scan 2s infinite linear;
+}
+
+@keyframes scan{
+    0%{top:0%;}
+    50%{top:100%;}
+    100%{top:0%;}
 }
 
 #ttn{
@@ -31,7 +71,6 @@ video{
 #status{
     font-size:14px;
     color:#aaa;
-    margin-top:5px;
 }
 
 button{
@@ -40,172 +79,119 @@ button{
     background:#00f2fe;
     border:none;
     border-radius:10px;
+    color:#000;
+    font-weight:bold;
 }
 </style>
 </head>
 
 <body>
 
-<h2>NP SCANNER MAX</h2>
+<h3>NP SCANNER PWA</h3>
 
-<button onclick="startScan()">📷 START</button>
-
-<video id="video" autoplay playsinline></video>
+<div class="scanner">
+    <div class="line"></div>
+    <div class="focus"></div>
+    <div id="video"></div>
+</div>
 
 <div id="ttn">---</div>
-<div id="status">ожидание...</div>
+<div id="status">готов</div>
 
-<audio id="ok" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
+<button onclick="startScan()">СТАРТ</button>
 
 <script>
 
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw6G3Z-JrqLGKu-SIljgynPBgmFDksg6BUXBIW-fMM1By-67tjli7LCzrCZyXvTuhkk/exec";
 
 let last = "";
-let stream;
-let detector;
+let buffer = {};
+let started = false;
 
-// 🔥 fallback ZXing (если BarcodeDetector не сработает)
-let fallbackReader;
+const status = document.getElementById("status");
+const ttnBox = document.getElementById("ttn");
 
-async function startScan(){
+function startScan(){
 
-document.getElementById("status").innerText = "📷 запуск камеры...";
+if(started) return;
+started = true;
 
-// CAMERA
-stream = await navigator.mediaDevices.getUserMedia({
-    video:{
-        facingMode:{ ideal:"environment" }
+status.innerText = "📷 запуск...";
+
+Quagga.init({
+    inputStream:{
+        type:"LiveStream",
+        target: document.querySelector('#video'),
+        constraints:{
+            facingMode:"environment",
+            width: 1280,
+            height: 720
+        }
+    },
+    decoder:{
+        readers:["code_128_reader"]
+    },
+    locate:true,
+    frequency: 10
+}, function(err){
+
+    if(err){
+        status.innerText = "Ошибка камеры";
+        return;
     }
+
+    Quagga.start();
+    status.innerText = "наведите на код";
 });
 
-const video = document.getElementById("video");
-video.srcObject = stream;
-await video.play();
-
-// ============================
-// 1) TRY BarcodeDetector (fast)
-// ============================
-
-if('BarcodeDetector' in window){
-
-    detector = new BarcodeDetector({
-        formats:[
-            "code_128",
-            "code_39",
-            "ean_13",
-            "ean_8",
-            "qr_code",
-            "data_matrix",
-            "pdf417"
-        ]
-    });
-
-    scanLoop(video);
-}
-else{
-    // ============================
-    // 2) fallback ZXing
-    // ============================
-    const script = document.createElement("script");
-    script.src = "https://unpkg.com/@zxing/library@0.20.0";
-    script.onload = ()=>startZXing(video);
-    document.body.appendChild(script);
-}
-
-document.getElementById("status").innerText =
-"🎯 наведите на код";
+Quagga.onDetected(onScan);
 
 }
 
-// ============================
-// BARCODE DETECTOR LOOP
-// ============================
+function onScan(result){
 
-async function scanLoop(video){
+let code = result.codeResult.code;
+if(!code) return;
 
-const canvas = document.createElement("canvas");
-const ctx = canvas.getContext("2d");
+// 🔥 УБРАЛИ ОГРАНИЧЕНИЕ ДЛИНЫ (ВАЖНО)
+let digits = code.replace(/\D/g,'');
 
-async function loop(){
+// антишум
+if(!digits) return;
 
-    if(video.readyState === video.HAVE_ENOUGH_DATA){
+// buffer для стабильности
+buffer[digits] = (buffer[digits] || 0) + 1;
 
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+if(buffer[digits] < 2) return;
 
-        ctx.drawImage(video,0,0);
-
-        try{
-
-            const codes = await detector.detect(canvas);
-
-            if(codes.length){
-
-                let text = codes[0].rawValue;
-
-                handleResult(text);
-            }
-
-        }catch(e){}
-    }
-
-    requestAnimationFrame(loop);
-}
-
-loop();
-
-}
-
-// ============================
-// ZXING FALLBACK
-// ============================
-
-function startZXing(video){
-
-const reader = new ZXing.BrowserMultiFormatReader();
-
-reader.decodeFromVideoDevice(
-    null,
-    video,
-    (result, err)=>{
-
-        if(result){
-            handleResult(result.getText());
-        }
-    }
-);
-
-}
-
-// ============================
-// COMMON RESULT HANDLER
-// ============================
-
-function handleResult(text){
-
-if(!text) return;
-
-text = text.trim();
+// reset buffer
+buffer = {};
 
 // антидубль
-if(text === last) return;
+if(digits === last) return;
 
-last = text;
+last = digits;
 
-document.getElementById("ttn").innerText = text;
-document.getElementById("status").innerText = "✔ СКАН";
-
-document.getElementById("ok").play().catch(()=>{});
+ttnBox.innerText = digits;
+status.innerText = "✔ СКАН";
 
 fetch(SCRIPT_URL,{
     method:"POST",
-    headers:{
-        "Content-Type":"text/plain"
-    },
-    body:JSON.stringify({ttn:text})
+    body: JSON.stringify({ttn:digits})
 });
 
+Quagga.stop();
+started = false;
+
+setTimeout(()=>{
+    status.innerText = "готов";
+},2000);
+
+}
+
+// PWA service worker
+if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('sw.js');
 }
 
 </script>
