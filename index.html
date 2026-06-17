@@ -93,6 +93,13 @@ body{
 }
 
 audio{display:none;}
+    
+.ok{color:#00ff99;}
+.err{color:#ff4d4d;}
+.info{color:#aaa;}
+.send{color:#00b7ff;}
+
+    
 </style>
 </head>
 
@@ -138,7 +145,7 @@ window.onload = () => startAI();
 // 🚀 AI START
 function startAI(){
 
-setStatus("🧠 AI camera init...");
+setStatus("🧠 инициализация камеры...", "info");    
 
 Quagga.init({
     inputStream:{
@@ -156,12 +163,13 @@ Quagga.init({
 }, function(err){
 
     if(err){
-        setStatus("❌ camera error");
+        setStatus("❌ ошибка камеры");
         return;
     }
 
     Quagga.start();
-    setStatus("🎯 AI scanning active");
+    setStatus("🎯 скан активен", "info");
+
 });
 
 Quagga.onDetected(process);
@@ -196,7 +204,7 @@ stabilityMap = {};
 
 // 🚫 duplicate control
 if(digits === lastTTN){
-    setStatus("⚠ duplicate");
+    setStatus("⚠ дубликат", "err");
     errSound.play().catch(()=>{});
     return;
 }
@@ -206,7 +214,7 @@ cooldown = true;
 
 // UI
 ttnBox.innerText = digits;
-setStatus("✔ saved");
+setStatus("✔ сохранено", "ok");    
 
 // 🔴 AI LOCK animation
 roi.classList.add("lock");
@@ -219,7 +227,9 @@ if(navigator.vibrate) navigator.vibrate(120);
 // 📤 send
 fetch(SCRIPT_URL,{
     method:"POST",
-    headers:{"Content-Type":"text/plain"},
+    headers:{
+        "Content-Type":"application/json"
+    },
     body: JSON.stringify({ttn:digits})
 });
 
@@ -233,8 +243,9 @@ setTimeout(()=>{
 
 
 // status helper
-function setStatus(t){
+function setStatus(t,type="info"){
     statusBox.innerText = t;
+    statusBox.className = type;
 }
 
 </script>
