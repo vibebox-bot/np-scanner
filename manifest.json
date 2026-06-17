@@ -1,5 +1,5 @@
 {
-  "name": "NP Scanner Terminal",
+  "name": "NP BoxScan",
   "short_name": "BoxScan",
   "start_url": "./",
   "display": "standalone",
