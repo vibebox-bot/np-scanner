@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NP TERMINAL PRO</title>
+<title>NP SCANNER PRO</title>
 
 <script src="https://unpkg.com/@zxing/library@0.20.0"></script>
 
@@ -16,10 +16,22 @@ body{
     text-align:center;
 }
 
+h2{
+    margin:10px 0;
+}
+
+#video{
+    width:100%;
+    max-width:600px;
+    height:60vh;
+    background:#000;
+    border-radius:12px;
+}
+
 #ttn{
-    font-size:28px;
-    color:#00f2fe;
+    font-size:24px;
     margin-top:10px;
+    color:#00f2fe;
     word-break:break-all;
 }
 
@@ -29,45 +41,10 @@ body{
     margin-top:5px;
 }
 
-.scanner{
-    width:92%;
-    height:60vh;
-    margin:10px auto;
-    background:#000;
-    border-radius:16px;
-    overflow:hidden;
-    position:relative;
-}
-
-video{
-    width:100%;
-    height:100%;
-    object-fit:cover;
-}
-
-.line{
-    position:absolute;
-    width:100%;
-    height:2px;
-    background:#00f2fe;
-    top:0;
-    animation:scan 2s infinite linear;
-}
-
-@keyframes scan{
-    0%{top:0%;}
-    50%{top:100%;}
-    100%{top:0%;}
-}
-
-.line.active{
-    background:#ff2d2d;
-}
-
 button{
     padding:12px 20px;
+    margin:10px;
     font-size:16px;
-    margin-top:10px;
     background:#00f2fe;
     border:none;
     border-radius:10px;
@@ -77,14 +54,11 @@ button{
 
 <body>
 
-<h2>NP TERMINAL PRO</h2>
+<h2>NP SCANNER PRO</h2>
 
 <button onclick="startScan()">📷 СТАРТ СКАНЕРА</button>
 
-<div class="scanner">
-    <video id="video"></video>
-    <div class="line" id="line"></div>
-</div>
+<video id="video"></video>
 
 <div id="ttn">---</div>
 <div id="status">ожидание...</div>
@@ -98,38 +72,35 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw6G3Z-JrqLGKu-SIljg
 
 let last = "";
 let cooldown = false;
-let controls = null;
-
-const status = document.getElementById("status");
-const ttnBox = document.getElementById("ttn");
-const line = document.getElementById("line");
-const ok = document.getElementById("ok");
-const dup = document.getElementById("dup");
+let codeReader;
 
 function startScan(){
 
-    status.innerText = "📷 запуск камеры...";
-
-    const codeReader = new ZXing.BrowserMultiFormatReader();
+    document.getElementById("status").innerText = "📷 запуск камеры...";
 
     const hints = new Map();
     hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
     hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
         ZXing.BarcodeFormat.CODE_128,
-        ZXing.BarcodeFormat.CODE_39,
+        ZXing.BarcodeFormat.QR_CODE,
         ZXing.BarcodeFormat.EAN_13,
-        ZXing.BarcodeFormat.EAN_8,
-        ZXing.BarcodeFormat.QR_CODE
+        ZXing.BarcodeFormat.CODE_39,
+        ZXing.BarcodeFormat.DATA_MATRIX,
+        ZXing.BarcodeFormat.PDF_417
     ]);
 
-    const reader = new ZXing.BrowserMultiFormatReader(hints);
+    codeReader = new ZXing.BrowserMultiFormatReader(hints);
 
-    reader.decodeFromVideoDevice(
-        null,
+    codeReader.decodeFromConstraints(
+        {
+            video: {
+                facingMode: { ideal: "environment" }, // задняя камера
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            }
+        },
         "video",
-        (result, err, ctrl) => {
-
-            controls = ctrl;
+        (result, err, controls) => {
 
             if(result && !cooldown){
 
@@ -137,23 +108,16 @@ function startScan(){
 
                 if(!text) return;
 
-                // 🔥 без ограничений по длине
-                line.classList.add("active");
-                setTimeout(()=>line.classList.remove("active"),150);
-
-                if(text === last){
-                    status.innerText = "⚠ Дубликат";
-                    dup.play().catch(()=>{});
-                    return;
-                }
+                // ❌ без ограничений длины
+                if(text === last) return;
 
                 last = text;
                 cooldown = true;
 
-                ttnBox.innerText = text;
-                status.innerText = "✔ СКАН УСПЕШЕН";
+                document.getElementById("ttn").innerText = text;
+                document.getElementById("status").innerText = "✔ СКАН УСПЕШЕН";
 
-                ok.play().catch(()=>{});
+                document.getElementById("ok").play().catch(()=>{});
 
                 fetch(SCRIPT_URL,{
                     method:"POST",
@@ -166,19 +130,23 @@ function startScan(){
                 })
                 .then(r=>r.text())
                 .then(res=>{
-                    status.innerText = "✔ " + res;
+                    document.getElementById("status").innerText = "✔ " + res;
+                })
+                .catch(()=>{
+                    document.getElementById("status").innerText = "❌ ошибка отправки";
                 });
 
                 setTimeout(()=>cooldown=false, 1200);
             }
 
             if(err){
-                // игнорируем шум
+                // игнор
             }
         }
     );
 
-    status.innerText = "🎯 НАВЕДИ НА ШТРИХКОД";
+    document.getElementById("status").innerText =
+    "🎯 наведи на штрихкод";
 }
 
 </script>
