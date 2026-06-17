@@ -3,54 +3,70 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NP SCANNER FINAL</title>
+<title>NP SCANNER PRO MAX</title>
+
+<link rel="manifest" href="manifest.json">
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
 
 <style>
 body{
     margin:0;
-    background:#0b0b0b;
+    background:linear-gradient(180deg,#0b0b0b,#111);
     color:#fff;
     font-family:Arial;
     text-align:center;
 }
 
-/* TTN сверху */
+/* TTN */
 #ttn{
-    font-size:28px;
-    font-weight:bold;
+    font-size:30px;
+    font-weight:800;
     color:#00f2fe;
-    padding:12px;
-    min-height:40px;
+    padding:14px;
     word-break:break-all;
+    min-height:40px;
 }
 
-/* статус */
+/* STATUS */
 #status{
-    font-size:14px;
+    font-size:15px;
     color:#aaa;
-    min-height:20px;
+    min-height:22px;
 }
 
-/* камера */
+/* CAMERA */
 .scanner{
     position:relative;
     width:92%;
     height:55vh;
     margin:10px auto;
-    border-radius:16px;
+    border-radius:18px;
     overflow:hidden;
     background:#000;
+    box-shadow:0 0 25px rgba(0,242,254,0.2);
 }
 
 .scanner video{
     width:100%;
     height:100%;
     object-fit:cover;
+    transform:scale(1.25); /* 🔥 ZOOM */
 }
 
-/* линия */
+/* CENTER ROI */
+.roi{
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    width:85%;
+    height:100px;
+    border:2px solid #00f2fe;
+    border-radius:14px;
+}
+
+/* SCAN LINE */
 .line{
     position:absolute;
     width:100%;
@@ -66,29 +82,20 @@ body{
     100%{top:0%;}
 }
 
-/* фокус */
-.focus{
-    position:absolute;
-    top:50%;
-    left:50%;
-    transform:translate(-50%,-50%);
-    width:90%;
-    height:90px;
-    border:2px solid #00f2fe;
-    border-radius:12px;
-}
-
-/* кнопка */
 button{
-    padding:14px 22px;
-    margin:10px;
+    padding:14px 26px;
+    margin:12px;
     background:#00f2fe;
     border:none;
-    border-radius:10px;
-    font-weight:bold;
+    border-radius:12px;
+    font-weight:800;
+    color:#000;
 }
 
-/* скрытые аудио */
+.ok{color:#00ff99;}
+.err{color:#ff4d4d;}
+.info{color:#aaa;}
+
 audio{display:none;}
 </style>
 </head>
@@ -96,11 +103,11 @@ audio{display:none;}
 <body>
 
 <div id="ttn">---</div>
-<div id="status">Нажмите СКАН</div>
+<div id="status" class="info">Нажмите СКАН</div>
 
 <div class="scanner">
     <div class="line"></div>
-    <div class="focus"></div>
+    <div class="roi"></div>
     <div id="camera"></div>
 </div>
 
@@ -129,14 +136,18 @@ const statusBox = document.getElementById("status");
 const okSound = document.getElementById("okSound");
 const errSound = document.getElementById("errSound");
 
+function setStatus(text,type){
+    statusBox.innerText = text;
+    statusBox.className = type;
+}
 
-// 🚀 СТАРТ
+// 🚀 START
 function startScan(){
 
 if(started) return;
 started = true;
 
-statusBox.innerText = "📷 запуск камеры...";
+setStatus("📷 запуск камеры...", "info");
 
 Quagga.init({
     inputStream:{
@@ -150,16 +161,16 @@ Quagga.init({
         readers:["code_128_reader"]
     },
     locate:true,
-    frequency: 10
+    frequency: 12
 }, function(err){
 
     if(err){
-        statusBox.innerText = "❌ ошибка камеры";
+        setStatus("❌ ошибка камеры","err");
         return;
     }
 
-    statusBox.innerText = "🎯 наведите на код";
     Quagga.start();
+    setStatus("🎯 наведите на центр","info");
 });
 
 Quagga.onDetected(onScan);
@@ -167,7 +178,7 @@ Quagga.onDetected(onScan);
 }
 
 
-// 🎯 СКАН
+// 🎯 SCAN
 function onScan(result){
 
 if(cooldown) return;
@@ -177,19 +188,19 @@ if(!code) return;
 
 let digits = code.replace(/\D/g,'');
 
-// ❌ фильтр НП
+// фильтр НП
 if(!digits.startsWith("20")) return;
 if(digits.length < 14 || digits.length > 20) return;
 
-// 🔁 стабильность (анти шум)
+// стабильность
 buffer[digits] = (buffer[digits] || 0) + 1;
 if(buffer[digits] < 3) return;
 
 buffer = {};
 
-// 🚫 антидубль
+// дубль
 if(digits === lastTTN){
-    statusBox.innerText = "⚠ дубль";
+    setStatus("⚠ дубль","err");
     errSound.play().catch(()=>{});
     return;
 }
@@ -197,30 +208,26 @@ if(digits === lastTTN){
 lastTTN = digits;
 cooldown = true;
 
-// 📦 UI
+// UI
 ttnBox.innerText = digits;
-statusBox.innerText = "✔ СКАНЕРОВАНО";
+setStatus("✔ записано","ok");
 
 okSound.play().catch(()=>{});
 if(navigator.vibrate) navigator.vibrate(150);
 
-// 📤 отправка в Google Sheets
+// отправка
 fetch(SCRIPT_URL,{
     method:"POST",
-    headers:{
-        "Content-Type":"text/plain"
-    },
+    headers:{"Content-Type":"text/plain"},
     body: JSON.stringify({ttn:digits})
 });
 
-// ⛔ стоп камеры после скана
 Quagga.stop();
 started = false;
 
-// 🔁 перезапуск через паузу
 setTimeout(()=>{
     cooldown = false;
-    statusBox.innerText = "Нажмите СКАН";
+    setStatus("Нажмите СКАН","info");
 },2500);
 
 }
