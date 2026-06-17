@@ -235,9 +235,6 @@ if(navigator.vibrate) navigator.vibrate(120);
 // send
 fetch(SCRIPT_URL,{
     method:"POST",
-    headers:{
-        "Content-Type":"application/json"
-    },
     body: JSON.stringify({ttn:digits})
 });
 
