@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NP BARCODE PRO</title>
+<title>NP SCANNER STABLE</title>
+
+<script src="https://unpkg.com/@ericblade/quagga2/dist/quagga.min.js"></script>
 
 <style>
 body{
@@ -14,15 +16,13 @@ body{
     text-align:center;
 }
 
-video{
+#scanner{
     width:100%;
     height:60vh;
-    background:#000;
-    object-fit:cover;
 }
 
 #ttn{
-    font-size:24px;
+    font-size:22px;
     margin-top:10px;
     color:#00f2fe;
     word-break:break-all;
@@ -36,7 +36,7 @@ video{
 
 button{
     padding:12px 20px;
-    margin-top:10px;
+    margin:10px;
     background:#00f2fe;
     border:none;
     border-radius:10px;
@@ -46,11 +46,11 @@ button{
 
 <body>
 
-<h2>NP BARCODE PRO</h2>
+<h2>NP SCANNER STABLE</h2>
 
 <button onclick="startScan()">📷 СТАРТ</button>
 
-<video id="video" autoplay playsinline></video>
+<div id="scanner"></div>
 
 <div id="ttn">---</div>
 <div id="status">ожидание...</div>
@@ -62,100 +62,66 @@ button{
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw6G3Z-JrqLGKu-SIljgynPBgmFDksg6BUXBIW-fMM1By-67tjli7LCzrCZyXvTuhkk/exec";
 
 let last = "";
-let stream = null;
 
-async function startScan(){
+function startScan(){
 
-    document.getElementById("status").innerText = "📷 запуск камеры...";
+document.getElementById("status").innerText = "📷 запуск камеры...";
 
-    try{
-
-        stream = await navigator.mediaDevices.getUserMedia({
-            video:{
-                facingMode:{ ideal:"environment" }
-            }
-        });
-
-        const video = document.getElementById("video");
-        video.srcObject = stream;
-
-        await video.play();
-
-        document.getElementById("status").innerText =
-        "🎯 наведите на код";
-
-        startDetection(video);
-
-    }catch(e){
-        console.log(e);
-        document.getElementById("status").innerText =
-        "❌ камера недоступна";
-    }
-}
-
-function startDetection(video){
-
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-
-    async function tick(){
-
-        if(video.readyState === video.HAVE_ENOUGH_DATA){
-
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-
-            ctx.drawImage(video,0,0,canvas.width,canvas.height);
-
-            const barcodeDetector = new BarcodeDetector({
-                formats: [
-                    "code_128",
-                    "code_39",
-                    "ean_13",
-                    "ean_8",
-                    "qr_code",
-                    "data_matrix",
-                    "pdf417"
-                ]
-            });
-
-            try{
-
-                const barcodes = await barcodeDetector.detect(canvas);
-
-                if(barcodes.length > 0){
-
-                    let text = barcodes[0].rawValue;
-
-                    if(text && text !== last){
-
-                        last = text;
-
-                        document.getElementById("ttn").innerText = text;
-                        document.getElementById("status").innerText = "✔ СКАН";
-
-                        document.getElementById("ok").play().catch(()=>{});
-
-                        fetch(SCRIPT_URL,{
-                            method:"POST",
-                            headers:{
-                                "Content-Type":"text/plain"
-                            },
-                            body:JSON.stringify({ttn:text})
-                        });
-
-                    }
-                }
-
-            }catch(e){
-                // тихо игнорим ошибки детектора
-            }
+Quagga.init({
+    inputStream : {
+        name : "Live",
+        type : "LiveStream",
+        target: document.querySelector('#scanner'),
+        constraints: {
+            facingMode: "environment"
         }
-
-        requestAnimationFrame(tick);
+    },
+    decoder : {
+        readers : [
+            "code_128_reader",
+            "code_39_reader",
+            "ean_reader",
+            "ean_8_reader",
+            "upc_reader"
+        ]
+    },
+    locate: true,
+    frequency: 10
+}, function(err) {
+    if (err) {
+        console.log(err);
+        document.getElementById("status").innerText = "❌ ошибка камеры";
+        return;
     }
+    Quagga.start();
+    document.getElementById("status").innerText = "🎯 наведите на штрихкод";
+});
 
-    tick();
+Quagga.onDetected(function(result){
+
+    let code = result.codeResult.code;
+
+    if(!code) return;
+
+    if(code === last) return;
+
+    last = code;
+
+    document.getElementById("ttn").innerText = code;
+    document.getElementById("status").innerText = "✔ СКАН";
+
+    document.getElementById("ok").play().catch(()=>{});
+
+    fetch(SCRIPT_URL,{
+        method:"POST",
+        headers:{
+            "Content-Type":"text/plain"
+        },
+        body:JSON.stringify({ttn:code})
+    });
+
+});
+
 }
 
 </script>
