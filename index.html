@@ -184,12 +184,7 @@ Quagga.onDetected(process);
 
 // 🧠 AI PROCESS (crop + stabilize + zoom logic)
 function process(result){
-    
-if(buffer[digits]) return;
-buffer[digits] = true;
-setTimeout(()=> delete buffer[digits], 800);
 
-    
 if(cooldown) return;
 
 let code = result.codeResult.code;
@@ -201,16 +196,18 @@ let digits = code.replace(/\D/g,'');
 if(!digits.startsWith("20")) return;
 if(digits.length < 14 || digits.length > 20) return;
 
-// 🔥 AI STABILIZATION (smart vote system)
+// 🔥 FAST BUFFER (антидубль шума)
+if(buffer[digits]) return;
+buffer[digits] = true;
+setTimeout(()=> delete buffer[digits], 800);
+
+// 🔥 AI STABILIZATION
 stabilityMap[digits] = (stabilityMap[digits] || 0) + 1;
 
-// require more confidence for unstable codes
-let threshold = 2;    
-// let threshold = digits.length > 16 ? 3 : 4;
+let threshold = 2;
 
 if(stabilityMap[digits] < threshold) return;
 
-// reset AI buffer
 stabilityMap = {};
 
 // 🚫 duplicate control
@@ -225,9 +222,9 @@ cooldown = true;
 
 // UI
 ttnBox.innerText = digits;
-setStatus("✔ сохранено", "ok");    
+setStatus("✔ сохранено", "ok");
 
-// 🔴 AI LOCK animation
+// 🔴 LOCK animation
 roi.classList.add("lock");
 setTimeout(()=>roi.classList.remove("lock"),350);
 
@@ -235,7 +232,7 @@ setTimeout(()=>roi.classList.remove("lock"),350);
 okSound.play().catch(()=>{});
 if(navigator.vibrate) navigator.vibrate(120);
 
-// 📤 send
+// send
 fetch(SCRIPT_URL,{
     method:"POST",
     headers:{
@@ -247,7 +244,7 @@ fetch(SCRIPT_URL,{
 // cooldown reset
 setTimeout(()=>{
     cooldown = false;
-    setStatus("AI scanning active");
+    setStatus("AI scanning active", "info");
 },1000);
 
 }
