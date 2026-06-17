@@ -157,10 +157,14 @@ Quagga.init({
         }
     },
     decoder:{
-        readers:["code_128_reader"]
+        readers:[
+          "code_128_reader",
+          "ean_reader",
+          "ean_8_reader"
+]
     },
     locate:true,
-    frequency: 18
+    frequency: 12
 }, function(err){
 
     if(err){
@@ -180,7 +184,12 @@ Quagga.onDetected(process);
 
 // 🧠 AI PROCESS (crop + stabilize + zoom logic)
 function process(result){
+    
+if(buffer[digits]) return;
+buffer[digits] = true;
+setTimeout(()=> delete buffer[digits], 800);
 
+    
 if(cooldown) return;
 
 let code = result.codeResult.code;
@@ -196,7 +205,8 @@ if(digits.length < 14 || digits.length > 20) return;
 stabilityMap[digits] = (stabilityMap[digits] || 0) + 1;
 
 // require more confidence for unstable codes
-let threshold = digits.length > 16 ? 3 : 4;
+let threshold = 2;    
+// let threshold = digits.length > 16 ? 3 : 4;
 
 if(stabilityMap[digits] < threshold) return;
 
