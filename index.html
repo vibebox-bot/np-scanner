@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NP SCANNER PRO</title>
+<title>NP TERMINAL PRO</title>
 
 <script src="https://unpkg.com/@zxing/library@0.20.0"></script>
 
@@ -16,16 +16,11 @@ body{
     text-align:center;
 }
 
-h2{
-    margin:10px 0;
-}
-
-#video{
+video{
     width:100%;
-    max-width:600px;
     height:60vh;
     background:#000;
-    border-radius:12px;
+    object-fit:cover;
 }
 
 #ttn{
@@ -44,7 +39,6 @@ h2{
 button{
     padding:12px 20px;
     margin:10px;
-    font-size:16px;
     background:#00f2fe;
     border:none;
     border-radius:10px;
@@ -54,9 +48,9 @@ button{
 
 <body>
 
-<h2>NP SCANNER PRO</h2>
+<h2>NP TERMINAL PRO</h2>
 
-<button onclick="startScan()">📷 СТАРТ СКАНЕРА</button>
+<button onclick="startScan()">📷 СТАРТ</button>
 
 <video id="video"></video>
 
@@ -64,89 +58,93 @@ button{
 <div id="status">ожидание...</div>
 
 <audio id="ok" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
-<audio id="dup" src="https://assets.mixkit.co/active_storage/sfx/555/555-preview.mp3"></audio>
 
 <script>
 
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw6G3Z-JrqLGKu-SIljgynPBgmFDksg6BUXBIW-fMM1By-67tjli7LCzrCZyXvTuhkk/exec";
 
 let last = "";
-let cooldown = false;
-let codeReader;
+let scanning = false;
+
+const codeReader = new ZXing.BrowserMultiFormatReader();
 
 function startScan(){
 
-    document.getElementById("status").innerText = "📷 запуск камеры...";
+document.getElementById("status").innerText = "📷 запуск камеры...";
 
-    const hints = new Map();
-    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-        ZXing.BarcodeFormat.CODE_128,
-        ZXing.BarcodeFormat.QR_CODE,
-        ZXing.BarcodeFormat.EAN_13,
-        ZXing.BarcodeFormat.CODE_39,
-        ZXing.BarcodeFormat.DATA_MATRIX,
-        ZXing.BarcodeFormat.PDF_417
-    ]);
+navigator.mediaDevices.getUserMedia({
+    video: {
+        facingMode: { ideal: "environment" }
+    }
+}).then(stream => {
 
-    codeReader = new ZXing.BrowserMultiFormatReader(hints);
+    const video = document.getElementById("video");
+    video.srcObject = stream;
+    video.play();
 
-    codeReader.decodeFromConstraints(
-        {
-            video: {
-                facingMode: { ideal: "environment" }, // задняя камера
-                width: { ideal: 1920 },
-                height: { ideal: 1080 }
-            }
-        },
-        "video",
-        (result, err, controls) => {
+    scanning = true;
 
-            if(result && !cooldown){
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
 
-                let text = result.getText().trim();
+    const tick = () => {
 
-                if(!text) return;
+        if(!scanning) return;
 
-                // ❌ без ограничений длины
-                if(text === last) return;
+        if(video.readyState === video.HAVE_ENOUGH_DATA){
 
-                last = text;
-                cooldown = true;
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
 
-                document.getElementById("ttn").innerText = text;
-                document.getElementById("status").innerText = "✔ СКАН УСПЕШЕН";
+            ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
-                document.getElementById("ok").play().catch(()=>{});
+            const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
 
-                fetch(SCRIPT_URL,{
-                    method:"POST",
-                    headers:{
-                        "Content-Type":"text/plain"
-                    },
-                    body:JSON.stringify({
-                        ttn:text
-                    })
-                })
-                .then(r=>r.text())
-                .then(res=>{
-                    document.getElementById("status").innerText = "✔ " + res;
-                })
-                .catch(()=>{
-                    document.getElementById("status").innerText = "❌ ошибка отправки";
-                });
+            try{
+                const result = codeReader.decodeBitmap(imageData);
 
-                setTimeout(()=>cooldown=false, 1200);
-            }
+                if(result){
 
-            if(err){
-                // игнор
+                    let text = result.getText();
+
+                    if(text && text !== last){
+
+                        last = text;
+
+                        document.getElementById("ttn").innerText = text;
+                        document.getElementById("status").innerText = "✔ СКАН";
+
+                        document.getElementById("ok").play().catch(()=>{});
+
+                        fetch(SCRIPT_URL,{
+                            method:"POST",
+                            headers:{
+                                "Content-Type":"text/plain"
+                            },
+                            body:JSON.stringify({ttn:text})
+                        });
+                    }
+                }
+
+            }catch(e){
+                // игнор — это нормально для frame scanning
             }
         }
-    );
+
+        requestAnimationFrame(tick);
+    };
+
+    tick();
 
     document.getElementById("status").innerText =
-    "🎯 наведи на штрихкод";
+    "🎯 НАВЕДИ НА ШТРИХКОД";
+
+}).catch(err=>{
+    document.getElementById("status").innerText =
+    "❌ нет доступа к камере";
+    console.log(err);
+});
+
 }
 
 </script>
